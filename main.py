@@ -121,7 +121,18 @@ def list_messages_with_labels(service, label_ids, user_id='me', ):
 
 
 def get_message(service, message_id):
-    return service.users().messages().get(userId='me', id=message_id, format='full').execute()
+    return service.users().messages().get(userId='me', id=message_id, format='raw').execute()
+
+def extract_message_body(message, format='full') -> str:
+    try:
+        return urlsafe_b64decode(message['payload']['parts'][0]['body']['data']).decode(encoding='utf-8')
+
+    except KeyError:
+        # Expected if not a multipart message
+        pass
+
+    return urlsafe_b64decode(message['payload']['body']['data']).decode(encoding='utf-8')
+
 
 
 if __name__ == '__main__':
@@ -142,18 +153,34 @@ if __name__ == '__main__':
     with open('messages_dump_full.json', encoding='utf-8') as f:
         messages = json.load(f)
 
-    message = messages[0]
-    for header in message['payload']['headers']:
-        if header['name'] == 'Subject':
-            print(header['value'])
+    with open('extracted_texts.txt', 'w', encoding='utf-8') as f:
+        for message in messages:
+            f.write(
+                '\n\n-------------------------------------------------------------------------------------------\n\n')
 
-    message_html = urlsafe_b64decode(message['payload']['parts'][0]['body']['data'])
-    soup = BeautifulSoup(message_html, "html.parser")
-    message_text = soup.get_text()
+            subject = ''
 
-    message_text = re.sub(r'\n\s*\n', '\n\n', message_text)
-    for string_to_filter in STRINGS_TO_FILTER_OUT:
-        message_text = re.sub(string_to_filter, '', message_text, flags=re.IGNORECASE)
-    print(message_text)
+            for header in message['payload']['headers']:
+                if header['name'] == 'Subject':
+                    subject = header['value']
+
+            try:
+                message_html = extract_message_body(message, format='full')
+            except KeyError as e:
+                print('Error extracting message')
+                f.write(f'Error extracting message: {e}\n\n')
+                f.write(str(dir(message['payload'])) + '\n')
+                f.write(f'{message["payload"]}\n')
+                continue
+            soup = BeautifulSoup(message_html, "html.parser")
+            message_text = soup.get_text()
+
+            message_text = re.sub(r'\n\s*\n', '\n\n', message_text)
+            for string_to_filter in STRINGS_TO_FILTER_OUT:
+                message_text = re.sub(string_to_filter, '', message_text, flags=re.IGNORECASE)
+
+            f.write(f'*{subject}*\n\n')
+            f.write(message_text)
+
 
     #print(urlsafe_b64decode(messages[0]['raw']))
