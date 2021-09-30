@@ -25,7 +25,7 @@ SENDER_ADDRESS_FILE = join(SETTINGS_DIRECTORY, '.sender_address')
 GMAIL_SCOPES = 'https://www.googleapis.com/auth/gmail.readonly'
 GMAIL_USER_ID = 'me'  # Special value used by Gmail API
 
-STRINGS_TO_FILTER_OUT = ['tomi', 'javanainen', 'konso']
+STRINGS_TO_FILTER_OUT = 'tomi|javanainen|konso'
 
 
 def first_time_setup() -> None:
@@ -123,6 +123,7 @@ def list_messages_with_labels(service, label_ids, user_id='me', ):
 def get_message(service, message_id):
     return service.users().messages().get(userId='me', id=message_id, format='raw').execute()
 
+
 def extract_message_body(message, format='full') -> str:
     try:
         return urlsafe_b64decode(message['payload']['parts'][0]['body']['data']).decode(encoding='utf-8')
@@ -133,6 +134,9 @@ def extract_message_body(message, format='full') -> str:
 
     return urlsafe_b64decode(message['payload']['body']['data']).decode(encoding='utf-8')
 
+
+def censor_string(string, pattern, replacement='name') -> str:
+    return re.sub(pattern, replacement, string, flags=re.IGNORECASE)
 
 
 if __name__ == '__main__':
@@ -162,7 +166,7 @@ if __name__ == '__main__':
 
             for header in message['payload']['headers']:
                 if header['name'] == 'Subject':
-                    subject = header['value']
+                    subject = censor_string(header['value'], pattern=STRINGS_TO_FILTER_OUT)
 
             try:
                 message_html = extract_message_body(message, format='full')
@@ -175,9 +179,10 @@ if __name__ == '__main__':
             soup = BeautifulSoup(message_html, "html.parser")
             message_text = soup.get_text()
 
+            # Remove excessive linebreaks
             message_text = re.sub(r'\n\s*\n', '\n\n', message_text)
-            for string_to_filter in STRINGS_TO_FILTER_OUT:
-                message_text = re.sub(string_to_filter, '', message_text, flags=re.IGNORECASE)
+            # Remove censored word
+            message_text = censor_string(message_text, pattern=STRINGS_TO_FILTER_OUT)
 
             f.write(f'*{subject}*\n\n')
             f.write(message_text)
