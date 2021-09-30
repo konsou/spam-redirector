@@ -10,4 +10,6 @@ GMAIL_CREDENTIALS_FILE = join(SECRETS_DIRECTORY, 'credentials.json')
 GMAIL_SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 GMAIL_USER_ID = 'me'  # Special value used by Gmail API
 
+DISCORD_TOKEN_FILE = join(SECRETS_DIRECTORY, 'discord_bot_token')
+
 STRINGS_TO_FILTER_OUT = 'tomi|javanainen|konso'
