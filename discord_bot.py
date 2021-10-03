@@ -11,7 +11,6 @@ if __name__ == '__main__':
 
     client = discord.Client()
 
-
     @client.event
     async def on_ready():
         print('We have logged in as {0.user}'.format(client))
@@ -28,7 +27,12 @@ if __name__ == '__main__':
     async def task_example():
         while True:
             print(f'Running task')
-            await asyncio.sleep(5)
+            for channel_id in CHANNELS_TO_SPAM_TO:
+                channel = client.get_channel(channel_id)
+                print(channel)
+                if channel is not None:
+                    await channel.send("Running task")
+            await asyncio.sleep(TASK_RUN_TIME_INTERVAL_SECONDS)
 
 
     client.loop.create_task(task_example())

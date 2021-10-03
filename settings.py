@@ -13,3 +13,7 @@ GMAIL_USER_ID = 'me'  # Special value used by Gmail API
 DISCORD_TOKEN_FILE = join(SECRETS_DIRECTORY, 'discord_bot_token')
 
 STRINGS_TO_FILTER_OUT = 'tomi|javanainen|konso'
+
+TASK_RUN_TIME_INTERVAL_SECONDS = 5
+
+CHANNELS_TO_SPAM_TO = [688775528831910000]
