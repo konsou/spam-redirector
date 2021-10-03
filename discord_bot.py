@@ -4,6 +4,7 @@ import json
 import discord
 from discord.ext import tasks
 
+import gmail
 from settings import *
 
 
@@ -27,6 +28,7 @@ if __name__ == '__main__':
         token = f.read().strip()
 
     client = discord.Client()
+    gmail_handler = gmail.GmailHandler()
 
     sent_ids: SentIds
     try:
@@ -49,16 +51,29 @@ if __name__ == '__main__':
         if message.content.startswith('$hello'):
             await message.channel.send('Hello!')
 
-    async def task_example():
+    async def email_task():
         while True:
             print(f'Running task')
-            for channel_id in CHANNELS_TO_SPAM_TO:
-                channel = client.get_channel(channel_id)
-                print(channel)
-                if channel is not None:
-                    await channel.send("Running task")
+            print(f'Fetch emails')
+            fetched_message_ids = [message['id'] for message in gmail_handler.list_messages_with_labels(['SPAM'])]
+            for message_id in fetched_message_ids:
+                if message_id in sent_ids:
+                    print(f'{message_id} already sent, skipping')
+                    continue
+
+                mail_text = gmail_handler.fetch_mail_and_format(message_id=message_id,
+                                                                strings_to_filter_out=STRINGS_TO_FILTER_OUT)
+                for channel_id in CHANNELS_TO_SPAM_TO:
+                    channel = client.get_channel(channel_id)
+                    if channel is not None:
+                        print(f'Sending message {message_id} to channel {channel}...')
+                        await channel.send(mail_text[:1999])
+                        sent_ids[message_id] = 1
+
+                save_sent_ids(sent_ids)
+
             await asyncio.sleep(TASK_RUN_TIME_INTERVAL_SECONDS)
 
 
-    client.loop.create_task(task_example())
+    client.loop.create_task(email_task())
     client.run(token)

@@ -7,8 +7,6 @@ import gmail
 from settings import *
 
 
-def censor_string(string, pattern, replacement='name') -> str:
-    return re.sub(pattern, replacement, string, flags=re.IGNORECASE)
 
 
 if __name__ == '__main__':
