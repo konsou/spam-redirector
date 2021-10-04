@@ -18,6 +18,8 @@ from settings import *
 class GmailHandler:
     def __init__(self):
         print(f'Init GmailHandler')
+        if not isfile(GMAIL_CREDENTIALS_FILE):
+            self.first_time_setup()
         self.service = self.authenticate()
 
     @staticmethod
@@ -104,9 +106,9 @@ class GmailHandler:
         while 'nextPageToken' in response:
             page_token = response['nextPageToken']
             response = self.service.users().messages().list(userId=user_id,
-                                                       labelIds=label_ids,
-                                                       pageToken=page_token).execute()
-        messages.extend(response['messages'])
+                                                            labelIds=label_ids,
+                                                            pageToken=page_token).execute()
+        messages.extend(response.get('messages', list()))
 
         return messages
 
@@ -168,3 +170,6 @@ class GmailHandler:
         return message_parsed
 
 
+if __name__ == '__main__':
+    handler = GmailHandler()
+    print(handler.get_labels())

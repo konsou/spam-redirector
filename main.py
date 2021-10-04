@@ -1,62 +1,95 @@
+import asyncio
 import json
-import re
 
-from bs4 import BeautifulSoup
+import discord
+from discord.ext import tasks
 
 import gmail
 from settings import *
 
+SentIds = dict[int: int]
 
+
+def save_sent_ids(ids: SentIds) -> None:
+    print('Saving sent id\'s to disk...')
+    with open(SENT_IDS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(ids, f, indent=2, sort_keys=True)
+
+
+def load_sent_ids() -> SentIds:
+    print('Loading sent id\'s from disk...')
+    with open(SENT_IDS_FILE, encoding='utf-8') as f:
+        return json.load(f)
 
 
 if __name__ == '__main__':
-    service = gmail.authenticate()
-    spam_messages = gmail.list_messages_with_labels(service=service,
-                                                    label_ids=['SPAM'])
-    #
-    # messages = []
-    for message in spam_messages[:10]:
-        message = gmail.get_message(service=service, message_id=message['id'])
-        message_parsed = f'*{gmail.extract_message_subject(message)}*\n\n{gmail.extract_message_body_text(message)}'
-        message_parsed = censor_string(message_parsed, STRINGS_TO_FILTER_OUT)
-        print(
-            f'{message_parsed}\n\n-------------------------------------------------------------------------------------------\n\n')
+    with open(DISCORD_TOKEN_FILE) as f:
+        token = f.read().strip()
 
-    #
-    # with open('messages_dump_full.json', 'w', encoding='utf-8') as f:
-    #     json.dump(messages, f)
+    client = discord.Client()
+    gmail_handler = gmail.GmailHandler()
 
-    # with open('messages_dump_full.json', encoding='utf-8') as f:
-    #     messages = json.load(f)
-    #
-    # with open('extracted_texts.txt', 'w', encoding='utf-8') as f:
-    #     for message in messages:
-    #         f.write(
-    #             '\n\n-------------------------------------------------------------------------------------------\n\n')
-    #
-    #         subject = ''
-    #
-    #         for header in message['payload']['headers']:
-    #             if header['name'] == 'Subject':
-    #                 subject = censor_string(header['value'], pattern=STRINGS_TO_FILTER_OUT)
-    #
-    #         try:
-    #             message_html = extract_message_body(message, format='full')
-    #         except KeyError as e:
-    #             print('Error extracting message')
-    #             f.write(f'Error extracting message: {e}\n\n')
-    #             f.write(str(dir(message['payload'])) + '\n')
-    #             f.write(f'{message["payload"]}\n')
-    #             continue
-    #         soup = BeautifulSoup(message_html, "html.parser")
-    #         message_text = soup.get_text()
-    #
-    #         # Remove excessive linebreaks
-    #         message_text = re.sub(r'\n\s*\n', '\n\n', message_text)
-    #         # Remove censored word
-    #         message_text = censor_string(message_text, pattern=STRINGS_TO_FILTER_OUT)
-    #
-    #         f.write(f'*{subject}*\n\n')
-    #         f.write(message_text)
-    #
-    # print(urlsafe_b64decode(messages[0]['raw']))
+    sent_ids: SentIds
+    try:
+        sent_ids = load_sent_ids()
+    except (FileNotFoundError, json.JSONDecodeError):
+        print(f'Creating new empty sent id\'s file...')
+        sent_ids = dict()
+        save_sent_ids(sent_ids)
+
+
+    @client.event
+    async def on_ready():
+        print('We have logged in as {0.user}'.format(client))
+
+
+    @client.event
+    async def on_message(message):
+        if message.author == client.user:
+            return
+
+        if message.content.startswith('$hello'):
+            await message.channel.send('Hello!')
+
+
+    async def email_task():
+        while True:
+            if not client.is_ready():
+                print(f'Email task: not connected')
+                await asyncio.sleep(10)
+                continue
+
+            print(f'Running mail task')
+            print(f'Fetch emails')
+            message_sent = False
+
+            inbox_messages = gmail_handler.list_messages_with_labels(['INBOX'])
+            spam_messages = gmail_handler.list_messages_with_labels(['SPAM'])
+
+            fetched_message_ids = [message['id'] for message in inbox_messages + spam_messages
+                                   if message]
+            print(f'Fetched {len(fetched_message_ids)} email ids')
+            for message_id in fetched_message_ids:
+                if message_id in sent_ids:
+                    print(f'{message_id} already sent, skipping')
+                    continue
+
+                print(f'Fetch mail text for message {message_id}...')
+                mail_text = gmail_handler.fetch_mail_and_format(message_id=message_id,
+                                                                strings_to_filter_out=STRINGS_TO_FILTER_OUT)
+                for channel_id in CHANNELS_TO_SPAM_TO:
+                    channel = client.get_channel(channel_id)
+                    if channel is not None:
+                        print(f'Sending message {message_id} to channel {channel}...')
+                        await channel.send(mail_text[:1999])
+                        sent_ids[message_id] = 1
+                        message_sent = True
+
+                save_sent_ids(sent_ids)
+                if message_sent:
+                    break
+            await asyncio.sleep(TASK_RUN_TIME_INTERVAL_SECONDS)
+
+
+    client.loop.create_task(email_task())
+    client.run(token)
